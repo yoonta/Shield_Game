@@ -9,7 +9,7 @@
             margin: 0;
             background-color: #0a0a0c;
             color: #fff;
-            font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -21,13 +21,13 @@
         #game-container {
             position: relative;
             background: #121217;
-            border-radius: 4px;
+            border-radius: 8px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
 
-        canvas { display: block; border-radius: 4px; }
+        canvas { display: block; border-radius: 8px; }
 
-        /* --- Minimalist UI Layer --- */
+        /* --- Minimalist UI --- */
         #ui-layer {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -37,16 +37,18 @@
             justify-content: center;
             background: #0a0a0c;
             z-index: 10;
-            padding: 20px;
-            box-sizing: border-box;
+        }
+
+        #main-menu, #ranking-screen {
+            text-align: center;
+            width: 100%;
         }
 
         h1 {
             font-size: 2rem;
             font-weight: 200;
-            letter-spacing: 12px;
+            letter-spacing: 10px;
             margin-bottom: 40px;
-            text-align: center;
         }
 
         input {
@@ -58,82 +60,77 @@
             padding: 10px;
             text-align: center;
             outline: none;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
             width: 220px;
             letter-spacing: 2px;
         }
 
         input:focus { border-bottom-color: #00f2fe; }
 
-        .btn-group { display: flex; gap: 15px; }
+        .btn-group { display: flex; gap: 15px; justify-content: center; }
 
         button {
-            padding: 10px 25px;
+            padding: 12px 30px;
             font-size: 0.8rem;
             letter-spacing: 2px;
             color: #fff;
             background: transparent;
-            border: 1px solid #333;
-            border-radius: 2px;
+            border: 1px solid #444;
+            border-radius: 4px;
             cursor: pointer;
             transition: 0.3s;
         }
 
-        button:hover { border-color: #fff; background: #fff; color: #000; }
+        button:hover { background: #fff; color: #000; border-color: #fff; }
 
-        /* --- Rankings View --- */
-        #ranking-screen {
-            display: none;
-            width: 100%;
-            text-align: center;
-        }
-
+        /* --- Ranking Style --- */
         #ranking-list {
             list-style: none;
             padding: 0;
-            margin: 20px 0;
-            font-size: 0.9rem;
-            color: #888;
-            max-height: 200px;
-            overflow-y: auto;
+            margin: 20px auto 40px;
+            width: 250px;
         }
 
         #ranking-list li {
-            margin: 10px 0;
             display: flex;
             justify-content: space-between;
-            width: 200px;
-            margin: 10px auto;
+            padding: 8px 0;
             border-bottom: 1px solid #1a1a1a;
-            padding-bottom: 5px;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            color: #888;
         }
 
         #score-display {
             position: absolute;
             top: 20px; left: 20px;
-            font-size: 0.9rem; color: #555;
-            letter-spacing: 1px;
+            font-size: 0.8rem; letter-spacing: 1px; color: #555;
         }
     </style>
 </head>
 <body>
 
     <div id="game-container">
-        <div id="score-display">PLAYER: <span id="cur-name" style="color:#00f2fe">--</span> | SCORE: <span id="cur-score" style="color:#fff">0</span></div>
+        <div id="score-display">
+            PLAYER: <span id="cur-name" style="color:#00f2fe">--</span> | 
+            SCORE: <span id="cur-score" style="color:#fff">0</span>
+        </div>
         <canvas id="gameCanvas" width="500" height="500"></canvas>
         
         <div id="ui-layer">
+            <!-- Main Menu -->
             <div id="main-menu">
-                <h1>SHIELD GAME</h1>
-                <input type="text" id="name-input" placeholder="NAME" maxlength="10">
+                <h1 id="menu-title">SHIELD GAME</h1>
+                <input type="text" id="name-input" placeholder="NAME" maxlength="10" autocomplete="off">
                 <div class="btn-group">
                     <button onclick="startGame()">START</button>
                     <button onclick="showRankings()">RANKING</button>
                 </div>
             </div>
 
-            <div id="ranking-screen">
-                <h1>TOP PLAYERS</h1>
+            <!-- Ranking Screen -->
+            <div id="ranking-screen" style="display: none;">
+                <h1>TOP 10</h1>
                 <ul id="ranking-list"></ul>
                 <button onclick="backToMenu()">BACK</button>
             </div>
@@ -158,15 +155,52 @@
 
         const center = { x: 250, y: 250 };
 
-        // --- Controls ---
+        // Controls
         document.addEventListener('keydown', (e) => {
             if (isGameOver) return;
             const key = e.key.toUpperCase();
             if (['W','A','S','D'].includes(key)) shieldDir = key;
-            if (e.key.includes('Arrow')) shieldDir = e.key.replace('Arrow','')[0].replace('U','W').replace('D','S').replace('L','A').replace('R','D');
+            if (e.key === 'ArrowUp') shieldDir = 'W';
+            if (e.key === 'ArrowDown') shieldDir = 'S';
+            if (e.key === 'ArrowLeft') shieldDir = 'A';
+            if (e.key === 'ArrowRight') shieldDir = 'D';
         });
 
-        // --- Core Functions ---
+        // --- Server Functions ---
+        async function saveScore(name, score) {
+            try {
+                await fetch('/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, score: score })
+                });
+            } catch (err) { console.error("Server save failed", err); }
+
+            // Local backup
+            let local = JSON.parse(localStorage.getItem('shieldLocal') || "[]");
+            local.push({ name: name.toUpperCase(), score: score });
+            local.sort((a,b) => b.score - a.score);
+            localStorage.setItem('shieldLocal', JSON.stringify(local.slice(0, 10)));
+        }
+
+        async function showRankings() {
+            mainMenu.style.display = 'none';
+            rankingScreen.style.display = 'block';
+            const list = document.getElementById('ranking-list');
+            list.innerHTML = "LOADING...";
+
+            try {
+                const response = await fetch('/ranks');
+                const ranks = await response.json();
+                list.innerHTML = ranks.map(r => `<li><span>${r.name}</span><span>${r.score}</span></li>`).join('') || "NO DATA";
+            } catch (err) {
+                // Fallback to local data
+                const local = JSON.parse(localStorage.getItem('shieldLocal') || "[]");
+                list.innerHTML = local.map(r => `<li><span>${r.name} (Local)</span><span>${r.score}</span></li>`).join('') || "OFFLINE";
+            }
+        }
+
+        // --- Game Logic ---
         function startGame() {
             const val = nameInput.value.trim();
             if (!val) { alert("ENTER NAME"); return; }
@@ -188,26 +222,9 @@
             uiLayer.style.display = 'flex';
             mainMenu.style.display = 'block';
             rankingScreen.style.display = 'none';
-            document.querySelector('h1').innerText = "FAILED";
-            document.getElementById('name-input').style.display = 'none';
+            document.getElementById('menu-title').innerText = "FAILED";
+            nameInput.style.display = 'none';
             document.querySelector('.btn-group button').innerText = "RETRY";
-        }
-
-        // --- Ranking Logic (LocalStorage) ---
-        function saveScore(name, score) {
-            let ranks = JSON.parse(localStorage.getItem('shieldRanks') || "[]");
-            ranks.push({ name: name.toUpperCase(), score: score });
-            ranks.sort((a, b) => b.score - a.score);
-            ranks = ranks.slice(0, 10); // Keep top 10
-            localStorage.setItem('shieldRanks', JSON.stringify(ranks));
-        }
-
-        function showRankings() {
-            mainMenu.style.display = 'none';
-            rankingScreen.style.display = 'block';
-            const list = document.getElementById('ranking-list');
-            const ranks = JSON.parse(localStorage.getItem('shieldRanks') || "[]");
-            list.innerHTML = ranks.map(r => `<li><span>${r.name}</span><span>${r.score}</span></li>`).join('') || "NO DATA";
         }
 
         function backToMenu() {
@@ -215,22 +232,21 @@
             mainMenu.style.display = 'block';
         }
 
-        // --- Game Loop ---
         function update() {
             if (isGameOver) return;
             ctx.fillStyle = 'rgba(10, 10, 12, 0.4)';
             ctx.fillRect(0, 0, 500, 500);
 
-            // Draw Player
+            // Draw Center Player
             ctx.beginPath(); ctx.arc(center.x, center.y, 20, 0, Math.PI*2);
             ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
 
-            // Shield
+            // Draw Shield
             let ang = shieldDir==='D'?0 : shieldDir==='S'?Math.PI*0.5 : shieldDir==='A'?Math.PI : Math.PI*1.5;
             ctx.beginPath(); ctx.arc(center.x, center.y, 35, ang-0.75, ang+0.75);
             ctx.strokeStyle = '#00f2fe'; ctx.lineWidth = 6; ctx.stroke();
 
-            // Attacks
+            // Attack Logic
             if (++frameCount % Math.max(15, 60 - Math.floor(score * 1.5)) === 0) {
                 const dirs = ['W','A','S','D'];
                 const o = dirs[Math.floor(Math.random()*4)];
@@ -258,7 +274,8 @@
                         gameOver();
                     }
                 }
-                ctx.fillStyle = '#ff4b2b'; ctx.fillRect(a.x-4, a.y-4, 8, 8);
+                ctx.fillStyle = '#ff4b2b';
+                ctx.fillRect(a.x-4, a.y-4, 8, 8);
             }
             animationId = requestAnimationFrame(update);
         }
